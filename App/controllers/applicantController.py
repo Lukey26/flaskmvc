@@ -10,6 +10,7 @@ def create_applicant(firstName, lastName, email, password):
     db.session.commit()
     return newuser
 
+
 def apply_for_job(applicant_id, job_listing_id):
     # Check if the applicant exists
     applicant = Applicant.query.get(applicant_id)
