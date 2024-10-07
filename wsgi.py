@@ -1,3 +1,4 @@
+from flask import cli
 import click, pytest, sys
 from flask import Flask
 from flask.cli import with_appcontext, AppGroup
@@ -5,32 +6,106 @@ from flask.cli import with_appcontext, AppGroup
 
 from App.database import db, get_migrate
 from App.models import User
+from App.models.Course import Course
+from App.models.Staff import Staff
+from App.models.CourseStaff import CourseStaff
 from App.main import create_app
-from App.controllers import ( view_applicants_for_job, view_applicants_for_employer, view_jobs, remove_listing, remove_user, create_listing, apply_for_job, create_user, create_admin, create_employer, create_applicant, get_all_users_json, get_all_users, initialize )
+from App.controllers import ( create_user, get_all_users_json, get_all_users, initialize )
 
-
-# This commands file allow you to create convenient CLI commands for testing controllers
-
+# Create the Flask app
 app = create_app()
 migrate = get_migrate(app)
 
-# This command creates and initializes the database
+# Initialize the database
 @app.cli.command("init", help="Creates and initializes the database")
 def init():
     initialize()
-    print('database intialized')
+    print('Database initialized')
+
+
+'''
+Staff and Course Commands
+'''
+
+# Group for organizing staff-related commands
+staff_cli = AppGroup('staff', help='Staff object commands')
+
+# Add staff command
+@staff_cli.command('add')
+#@click.argument('id')
+@click.argument('username')
+@click.argument('role')
+def add_staff(username, role):
+    """Add a new staff member."""
+    staff = Staff(name=username, role=role)
+    db.session.add(staff)
+    db.session.commit()
+    print(f"Added staff: {staff.name}, Role: {staff.role}")
+
+@staff_cli.command('delete')
+@click.argument('username',default = 'bob')
+def delete_staff(username):
+    bob = Staff.query.filter_by(name=username).first()
+    if not bob:
+        print(f'{username} not found')
+        return
+    db.session.delete(bob)
+    db.session.commit()
+    print(f'{username} deleted')
+# Group for organizing course-related commands
+course_cli = AppGroup('course', help='Course object commands')
+
+# Add course command
+@course_cli.command('add')
+#@click.argument('id')
+@click.argument('course_name')
+def add_course(course_name):
+    """Add a new course."""
+    course = Course(course_name=course_name)
+    db.session.add(course)
+    db.session.commit()
+    print(f"Added course: {course.course_name}")
+
+# Command to link staff and course
+@course_cli.command('link-staff')
+@click.argument('staff_id', type=int)
+@click.argument('course_id', type=int)
+def link_staff_course(staff_id, course_id):
+    """Link staff to a course."""
+    link = CourseStaff(staff_id=staff_id, course_id=course_id)
+    db.session.add(link)
+    db.session.commit()
+    print(f"Linked staff ID: {staff_id} to course ID: {course_id}")
+
+# Print all data command
+@course_cli.command('print-data')
+def print_data():
+    """Print all staff and courses."""
+    staff_members = Staff.query.all()
+    courses = Course.query.all()
+
+    print("Staff Members:")
+    for staff in staff_members:
+        print(f"ID: {staff.id}, Username: {staff.name}, Role: {staff.role}")
+
+    print("\nCourses:")
+    for course in courses:
+        print(f"ID: {course.id}, Course Name: {course.course_name}")
+
+    print("\nCourse Staff Links:")
+    course_staff_links = CourseStaff.query.all()
+    for link in course_staff_links:
+        print(f"Staff ID: {link.staff_id} is linked to Course ID: {link.course_id}")
+
 
 '''
 User Commands
 '''
 
-# Commands can be organized using groups
+# Group for organizing user-related commands
+user_cli = AppGroup('user', help='User object commands')
 
-# create a group, it would be the first argument of the comand
-# eg : flask user <command>
-user_cli = AppGroup('user', help='User object commands') 
-
-# Then define the command and any parameters and annotate it with the group (@)
+# Create user command
 @user_cli.command("create", help="Creates a user")
 @click.argument("firstName", default="rob")
 @click.argument("lastName", default="man")
@@ -40,8 +115,7 @@ def create_user_command(firstName, lastName, email, password):
     create_user(firstName, lastName, email, password)
     print(f'{firstName} created!')
 
-# this command will be : flask user create bob bobpass
-
+# List users command
 @user_cli.command("list", help="Lists users in the database")
 @click.argument("format", default="string")
 def list_user_command(format):
@@ -50,102 +124,17 @@ def list_user_command(format):
     else:
         print(get_all_users_json())
 
-
-
 app.cli.add_command(user_cli) # add the group to the cli
-
-'''
-applicant commands
-'''
-applicant_cli = AppGroup('applicant', help='Applicant object commands')
-@applicant_cli.command("create", help="creates an applicant")
-@click.argument("firstname", default="unemployed")
-@click.argument("lastname", default="unemployed")
-@click.argument("email", default="unemployed@email.com")
-@click.argument("password", default="robpass")
-def create_applicant_command(firstname, lastname, email, password):
-    applicant = create_applicant(firstname, lastname, email, password)
-    print(f'{firstname} created! With an ID of {applicant.id}')
-
-
-@applicant_cli.command("apply", help="creates an job application")
-@click.argument("applicantid", default="1")
-@click.argument("joblistingid", default="1")
-def apply_for_job_command(applicantid, joblistingid):
-    apply_for_job(applicantid,joblistingid)
-
-@applicant_cli.command("view_jobs", help="show all jobs listings")
-def view_job_command():
-    view_jobs()
-
-app.cli.add_command(applicant_cli) # add the group to the cli
-
-'''
-admin commands
-'''
-admin_cli = AppGroup('admin', help='admin object commands')
-@admin_cli.command("create", help="creates an admin")
-@click.argument("firstname", default="bigboss")
-@click.argument("lastname", default="unemployed")
-@click.argument("email", default="bigboss@email.com")
-@click.argument("password", default="robpass")
-def create_admin_command(firstname, lastname, email, password):
-    create_admin(firstname, lastname, email, password)
-    print(f'{firstname} created!')
-
-@admin_cli.command("remove_user", help="removes a user")
-@click.argument("user_id", default="0")
-def remove_user_command(user_id):
-    remove_user(user_id)
-
-@admin_cli.command("remove_listing", help="removes a listing")
-@click.argument("listing_id", default="0")
-def remove_listing_command(listing_id):
-    remove_listing(listing_id)
-
-app.cli.add_command(admin_cli) # add the group to the cli
-
-'''
-employer commands
-'''
-employer_cli = AppGroup('employer', help='admin object commands')
-@employer_cli.command("create", help="creates an admin")
-@click.argument("firstname", default="employer")
-@click.argument("lastname", default="unemployed")
-@click.argument("email", default="employer@email.com")
-@click.argument("password", default="robpass")
-def create_employer_command(firstname, lastname, email, password):
-    employer=create_employer(firstname, lastname, email, password)
-    print(f'{firstname} created! with an ID of {employer.id}')
-
-@employer_cli.command("create_listing", help="creates an job listing")
-@click.argument("title", default="internship")
-@click.argument("description", default="basically slave labour")
-@click.argument("employerid", default="1")
-def create_job_listing_command(title, description, employerid):
-    job_listing=create_listing(title, description, employerid)
-    click.echo(f"Job listing '{title}' created by employer {employerid} with an ID of {job_listing.id}.")
-
-@employer_cli.command("view_all_applicants", help="shows all applicants for all jobs")
-@click.argument("employer_id", default="0")
-def view_applicants_for_employer_command(employer_id):
-    view_applicants_for_employer(employer_id)
-
-@employer_cli.command("view_job_applicants", help="shows all applicants for a job")
-@click.argument("job_id", default="0")
-def view_job_applicants_command(job_id):
-    view_applicants_for_job(job_id)
-
-
-app.cli.add_command(employer_cli) # add the group to the cli
 
 '''
 Test Commands
 '''
 
-test = AppGroup('test', help='Testing commands') 
+# Group for organizing test-related commands
+test_cli = AppGroup('test', help='Testing commands')
 
-@test.command("user", help="Run User tests")
+# Run user tests
+@test_cli.command("user", help="Run User tests")
 @click.argument("type", default="all")
 def user_tests_command(type):
     if type == "unit":
@@ -154,6 +143,13 @@ def user_tests_command(type):
         sys.exit(pytest.main(["-k", "UserIntegrationTests"]))
     else:
         sys.exit(pytest.main(["-k", "App"]))
-    
 
-app.cli.add_command(test)
+# Register the test group commands
+app.cli.add_command(test_cli)
+
+# Register the staff and course group commands
+app.cli.add_command(staff_cli)
+app.cli.add_command(course_cli)
+
+if __name__ == "__main__":
+    app.run()
